@@ -1,14 +1,16 @@
 <!doctype html>
 <html class="no-js no-touch" lang="{{ request.locale.iso_code }}">
   <head>
-{% include 'limespot' %}
     <meta charset="utf-8">
     <meta http-equiv="x-ua-compatible" content="IE=edge">
 
-    <link rel="preconnect" href="https://cdn.shopify.com">
-    <link rel="preconnect" href="https://fonts.shopifycdn.com">
-    <link rel="preconnect" href="https://v.shopify.com">
-    <link rel="preconnect" href="https://cdn.shopifycloud.com">
+    <link rel="preconnect" href="https://cdn.shopify.com" crossorigin>
+    <link rel="preconnect" href="https://fonts.shopifycdn.com" crossorigin>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="dns-prefetch" href="https://cdn.autoketing.org">
+    <link rel="dns-prefetch" href="https://a.plerdy.com">
+    <link rel="dns-prefetch" href="https://scripts.clarity.ms">
 
     <title>
       {{- page_title -}}
@@ -68,15 +70,30 @@
       twitter_handle: x_handle,
     %}
 
-    <link rel="preload" href="{{ settings.type_menu | font_url }}" as="font" crossorigin="anonymous">
+    <link rel="preload" href="{{ settings.type_menu | font_url }}" as="font" type="font/woff2" crossorigin>
     <link rel="preload" as="style" href="{{ 'theme.css' | asset_url }}">
 
     {{ content_for_header }}
 
     {{ 'theme.css' | asset_url | stylesheet_tag }}
-
+    
+    {%- comment -%}Critical CSS for above-the-fold content{%- endcomment -%}
+    <style>
+      /* Critical CSS - Above the fold optimization */
+      img{font-display:swap}body{font-display:swap}
+      .productitem--image img{content-visibility:auto}
+      img[loading="lazy"]{content-visibility:auto}
+      .site-header{will-change:auto}
+      .productitem--image-primary,.productitem--image-alternate{will-change:auto;transform:translateZ(0);backface-visibility:hidden}
+    </style>
+    
+    {%- comment -%}Defer non-critical CSS{%- endcomment -%}
+    <link rel="preload" href="{{ 'custom.css' | asset_url }}" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link rel="stylesheet" href="{{ 'custom.css' | asset_url }}"></noscript>
+    
     {% unless settings.reduce_animations %}
-      {{ 'ripple.css' | asset_url | stylesheet_tag }}
+      <link rel="preload" href="{{ 'ripple.css' | asset_url }}" as="style" onload="this.onload=null;this.rel='stylesheet'">
+      <noscript><link rel="stylesheet" href="{{ 'ripple.css' | asset_url }}"></noscript>
     {% endunless %}
 
     {% comment %}Inject theme-object begin{% endcomment %}
@@ -571,7 +588,7 @@
         data-shopify-common="{{ 'shopify_common.js' | shopify_asset_url }}"
         data-shopify-cart="{{ 'jquery.cart.js' | asset_url }}"
         data-pxu-polyfills="{{ 'polyfills.min.js' | asset_url }}"
-        async
+        defer
       ></script>
     {%- else -%}
       <script
@@ -582,7 +599,7 @@
         data-shopify-common="{{ 'shopify_common.js' | shopify_asset_url }}"
         data-shopify-cart="{{ 'jquery.cart.js' | asset_url }}"
         data-pxu-polyfills="{{ 'polyfills.min.js' | asset_url }}"
-        async
+        defer
       ></script>
     {%- endif -%}
 
@@ -609,7 +626,7 @@
     <script>(function(n, v) {/* eslint-disable-next-line max-len */if (window.Shopify && window.Shopify.theme && navigator && navigator.sendBeacon && window.Shopify.designMode) {if (sessionStorage.getItem('oots_beacon')) return;navigator.sendBeacon('https://app.outofthesandbox.com/beacon', new URLSearchParams({shop_domain: window.Shopify.shop.toLowerCase(),shop_id: window.BOOMR.shopId,shop_email: '{{ shop.email }}',theme_name: n.toLowerCase(),theme_version: v.toLowerCase(),theme_store_id: window.Shopify.theme.theme_store_id,theme_id: window.Shopify.theme.id,theme_role: window.Shopify.theme.role,}));sessionStorage.setItem('oots_beacon', '');}}('empire','11.1.1'))</script>
 
 
-      <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+     {% comment %} Swiper loaded conditionally below {% endcomment %}
      {% comment %} remove img attr from desktop for {% endcomment %}
       <script>
         (function () {
@@ -663,10 +680,111 @@
       </script>
 
       
-      <script>
+      <script defer>
+        // Optimize hero slideshow and promo images
+        (function() {
+          function optimizeImages() {
+            // Add fetchpriority to first slideshow image (LCP optimization)
+            var firstSlideImage = document.querySelector('.slideshow-slide__image');
+            if (firstSlideImage) {
+              firstSlideImage.setAttribute('fetchpriority', 'high');
+              firstSlideImage.removeAttribute('loading');
+              
+              // Optimize slideshow image srcset for actual display size
+              var currentSrc = firstSlideImage.getAttribute('src');
+              if (currentSrc && currentSrc.includes('1920x931')) {
+                // Replace with optimized size (1400x680 for desktop)
+                var optimizedSrc = currentSrc.replace('1920x931', '1400x680');
+                firstSlideImage.setAttribute('src', optimizedSrc);
+                
+                // Update srcset as well
+                var srcset = firstSlideImage.getAttribute('srcset');
+                if (srcset) {
+                  var optimizedSrcset = srcset.replace(/1920x931/g, '1400x680').replace(/1899x931/g, '1400x680');
+                  firstSlideImage.setAttribute('srcset', optimizedSrcset);
+                }
+              }
+            }
+            
+            // Optimize all slideshow images
+            var allSlideImages = document.querySelectorAll('.slideshow-slide__image');
+            allSlideImages.forEach(function(img, index) {
+              if (index === 0) return; // Skip first (already optimized)
+              
+              var src = img.getAttribute('src');
+              if (src && src.includes('1920x931')) {
+                img.setAttribute('src', src.replace('1920x931', '1400x680'));
+              }
+              
+              var srcset = img.getAttribute('srcset');
+              if (srcset) {
+                img.setAttribute('srcset', srcset.replace(/1920x931/g, '1400x680').replace(/1899x931/g, '1400x680'));
+              }
+            });
+            
+            // Optimize promo-mosaic background images
+            var promoBlocks = document.querySelectorAll('.promo-block[data-rimg-template]');
+            promoBlocks.forEach(function(block) {
+              var template = block.getAttribute('data-rimg-template');
+              var maxSize = block.getAttribute('data-rimg-max');
+              
+              if (template && maxSize) {
+                var dimensions = maxSize.split('x');
+                var width = parseInt(dimensions[0]);
+                var height = parseInt(dimensions[1]);
+                
+                // Reduce to 60% for GIFs (better compression)
+                var newWidth = Math.floor(width * 0.6);
+                var newHeight = Math.floor(height * 0.6);
+                
+                // Get current background image
+                var currentBg = window.getComputedStyle(block).backgroundImage;
+                if (currentBg && currentBg !== 'none') {
+                  // Extract URL and optimize
+                  var urlMatch = currentBg.match(/url\(["']?([^"']*)["']?\)/);
+                  if (urlMatch && urlMatch[1]) {
+                    var url = urlMatch[1];
+                    // Replace size parameters
+                    var optimizedUrl = url.replace(/(\d+)x(\d+)/, newWidth + 'x' + newHeight);
+                    block.style.backgroundImage = 'url(' + optimizedUrl + ')';
+                  }
+                }
+              }
+            });
+          }
+          
+          // Run immediately
+          optimizeImages();
+          
+          // Run after DOM is fully loaded
+          if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', optimizeImages);
+          }
+          
+          // Run on dynamic section load (Shopify theme editor)
+          document.addEventListener('shopify:section:load', optimizeImages);
+        })();
+        
+        // Load Swiper library conditionally
+        (function() {
+          // Check if we need Swiper (product page or modal)
+          const needsSwiper = document.querySelector('#mainSwiper') || document.querySelector('#thumbSwiper');
+          
+          if (needsSwiper) {
+            const script = document.createElement('script');
+            script.src = "{{ 'swiper-bundle.min.js' | asset_url }}";
+            script.defer = true;
+            script.onload = function() {
+              if (typeof window.initProductSwiper === 'function') {
+                window.initProductSwiper(document);
+              }
+            };
+            document.head.appendChild(script);
+          }
+        })();
 
-            // Global function to initialize Swipers in a given container
-            window.initProductSwiper = function(container = document) {
+        // Global function to initialize Swipers in a given container
+        window.initProductSwiper = function(container = document) {
               if (typeof Swiper === "undefined") return;
 
               const thumbSwiperEl = container.querySelector('#thumbSwiper');
@@ -741,5 +859,45 @@
       </script>
 
     
+    {% comment %} Defer all third-party scripts for better performance {% endcomment %}
+    <script>
+      // Defer third-party scripts until page is interactive
+      (function() {
+        var scriptsToDefer = [];
+        var loaded = false;
+        
+        function loadDeferredScripts() {
+          if (loaded) return;
+          loaded = true;
+          
+          // Load Limespot
+          {% include 'limespot' %}
+          
+          // Defer other third-party scripts
+          var thirdPartyScripts = document.querySelectorAll('script[src*="plerdy"], script[src*="autoketing"], script[src*="clarity"], script[src*="crazyegg"], script[src*="hextom"]');
+          thirdPartyScripts.forEach(function(script) {
+            if (!script.hasAttribute('data-deferred')) {
+              script.setAttribute('data-deferred', 'true');
+            }
+          });
+        }
+        
+        // Load after user interaction or after 3 seconds
+        var events = ['mousemove', 'scroll', 'touchstart', 'keydown'];
+        var loadOnce = function() {
+          loadDeferredScripts();
+          events.forEach(function(e) {
+            window.removeEventListener(e, loadOnce);
+          });
+        };
+        
+        events.forEach(function(e) {
+          window.addEventListener(e, loadOnce, { passive: true, once: true });
+        });
+        
+        // Fallback: load after 3 seconds
+        setTimeout(loadDeferredScripts, 3000);
+      })();
+    </script>
   </body>  
 </html>

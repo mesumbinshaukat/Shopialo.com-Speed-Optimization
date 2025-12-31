@@ -317,54 +317,130 @@ button {
     height: auto;
   }
   
-  /* Reduce mobile layout complexity */
+  /* Reduce mobile layout complexity - AGGRESSIVE */
   .productgrid {
-    contain: layout style paint;
+    contain: strict;
   }
   
   .productitem {
-    contain: layout style paint;
+    contain: strict;
     content-visibility: auto;
-    contain-intrinsic-size: 0 350px;
+    contain-intrinsic-size: 0 320px;
   }
   
-  /* Mobile header optimization */
+  /* Mobile header optimization - strict containment */
   .site-header {
-    contain: layout style paint;
+    contain: strict;
     will-change: auto;
+  }
+  
+  .site-header-main {
+    contain: layout style;
   }
   
   /* Optimize mobile navigation */
   .site-mobile-nav {
-    contain: layout style paint;
+    contain: strict;
     content-visibility: auto;
   }
   
   /* Reduce mobile footer complexity */
   .site-footer {
-    contain: layout style paint;
+    contain: strict;
     content-visibility: auto;
-    contain-intrinsic-size: 0 250px;
+    contain-intrinsic-size: 0 200px;
   }
   
   /* Mobile image lazy loading optimization */
   img[loading="lazy"] {
     content-visibility: auto;
-    contain-intrinsic-size: 0 200px;
+    contain-intrinsic-size: 0 180px;
   }
   
   /* Optimize mobile modals */
   .modal,
   .drawer,
   .quickshop {
-    contain: layout style paint;
+    contain: strict;
     transform: translateZ(0);
   }
   
-  /* Mobile GPU acceleration */
+  /* Mobile GPU acceleration - AGGRESSIVE */
   .productitem--image-alternate,
   .slideshow-slide {
-    transform: translateZ(0);
+    transform: translate3d(0, 0, 0);
     backface-visibility: hidden;
+    will-change: transform;
+  }
+  
+  /* Reduce mobile rendering complexity */
+  .productitem--image,
+  .productitem--image-link {
+    contain: strict;
+    transform: translateZ(0);
+  }
+  
+  /* Mobile-specific style optimization */
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  /* Reduce mobile paint complexity */
+  .site-nav,
+  .site-nav-dropdown,
+  .site-nav-item {
+    contain: layout style;
+  }
+  
+  /* Mobile form optimization */
+  input,
+  select,
+  textarea,
+  button {
+    contain: strict;
+  }
+  
+  /* Optimize mobile animations - reduce to essentials */
+  * {
+    animation-duration: 0.2s !important;
+    transition-duration: 0.2s !important;
+  }
+  
+  /* Mobile badge optimization */
+  .productitem--badge,
+  .product-badge,
+  .badge {
+    contain: strict;
+    transform: translateZ(0);
+  }
+  
+  /* Mobile third-party optimization */
+  [id*="limespot"],
+  [id*="plerdy"],
+  [id*="autoketing"],
+  [class*="smile-"] {
+    content-visibility: auto;
+    contain: strict;
+    contain-intrinsic-size: 0 100px;
+  }
+  
+  /* Reduce mobile scroll complexity */
+  .scrollable,
+  .overflow-scroll {
+    -webkit-overflow-scrolling: touch;
+    contain: layout style;
+  }
+  
+  /* Mobile collection/grid optimization */
+  .collection-main,
+  .productgrid--outer {
+    contain: strict;
+  }
+  
+  /* Optimize mobile text rendering */
+  body,
+  p,
+  h1, h2, h3, h4, h5, h6 {
+    text-rendering: optimizeSpeed;
   }
 }

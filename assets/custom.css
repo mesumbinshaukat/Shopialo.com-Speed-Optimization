@@ -328,20 +328,9 @@ button {
     contain-intrinsic-size: 0 320px;
   }
   
-  /* Mobile header optimization - strict containment */
+  /* Mobile header optimization - REMOVED strict containment to fix display */
   .site-header {
-    contain: strict;
     will-change: auto;
-  }
-  
-  .site-header-main {
-    contain: layout style;
-  }
-  
-  /* Optimize mobile navigation */
-  .site-mobile-nav {
-    contain: strict;
-    content-visibility: auto;
   }
   
   /* Reduce mobile footer complexity */

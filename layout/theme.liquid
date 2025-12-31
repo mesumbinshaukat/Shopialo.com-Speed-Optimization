@@ -85,34 +85,64 @@
 
     {{ 'theme.css' | asset_url | stylesheet_tag }}
     
-    {%- comment -%}Defer Shopify CDN CSS to prevent render blocking{%- endcomment -%}
+    {%- comment -%}Aggressively defer Shopify CDN CSS to prevent render blocking{%- endcomment -%}
     <script>
-      // Defer Shopify app CSS files
+      // Defer Shopify app CSS files - Enhanced version
       (function() {
-        var shopifyCSSFiles = [
-          'https://cdn.shopify.com/extensions/*/assets/app.css',
-          'https://cdn.shopify.com/extensions/*/assets/sdk.css',
-          'https://cdn.shopify.com/extensions/*/assets/superlemon.css'
-        ];
+        var processedLinks = new Set();
         
-        // Intercept and defer Shopify CSS
+        // Function to defer a CSS link
+        function deferCSSLink(link) {
+          var href = link.href || '';
+          
+          // Skip if already processed
+          if (processedLinks.has(href)) return;
+          
+          if (href.includes('cdn.shopify.com') && 
+              (href.includes('/assets/app.css') || 
+               href.includes('/assets/sdk.css') || 
+               href.includes('/assets/superlemon.css'))) {
+            
+            processedLinks.add(href);
+            
+            // Remove the blocking link
+            var parent = link.parentNode;
+            if (parent) {
+              parent.removeChild(link);
+            }
+            
+            // Create new non-blocking link
+            var newLink = document.createElement('link');
+            newLink.rel = 'preload';
+            newLink.as = 'style';
+            newLink.href = href;
+            newLink.onload = function() {
+              this.onload = null;
+              this.rel = 'stylesheet';
+            };
+            
+            // Add noscript fallback
+            var noscript = document.createElement('noscript');
+            var fallbackLink = document.createElement('link');
+            fallbackLink.rel = 'stylesheet';
+            fallbackLink.href = href;
+            noscript.appendChild(fallbackLink);
+            
+            document.head.appendChild(newLink);
+            document.head.appendChild(noscript);
+          }
+        }
+        
+        // Process existing links immediately
+        var existingLinks = document.querySelectorAll('link[rel="stylesheet"]');
+        existingLinks.forEach(deferCSSLink);
+        
+        // Watch for new links being added
         var observer = new MutationObserver(function(mutations) {
           mutations.forEach(function(mutation) {
             mutation.addedNodes.forEach(function(node) {
               if (node.tagName === 'LINK' && node.rel === 'stylesheet') {
-                var href = node.href || '';
-                if (href.includes('cdn.shopify.com') && 
-                    (href.includes('/assets/app.css') || 
-                     href.includes('/assets/sdk.css') || 
-                     href.includes('/assets/superlemon.css'))) {
-                  // Convert to preload and defer
-                  node.rel = 'preload';
-                  node.as = 'style';
-                  node.onload = function() {
-                    this.onload = null;
-                    this.rel = 'stylesheet';
-                  };
-                }
+                deferCSSLink(node);
               }
             });
           });
@@ -120,8 +150,8 @@
         
         observer.observe(document.head, { childList: true, subtree: true });
         
-        // Stop observing after 2 seconds
-        setTimeout(function() { observer.disconnect(); }, 2000);
+        // Keep observing for 3 seconds to catch all Shopify injections
+        setTimeout(function() { observer.disconnect(); }, 3000);
       })();
     </script>
     
@@ -676,8 +706,68 @@
           window.addEventListener(e, loadOnce, { passive: true, once: true });
         });
         
-        // Fallback: load after 500ms
-        setTimeout(loadEmpire, 500);
+        // Fallback: load after 800ms (increased for better main-thread performance)
+        setTimeout(loadEmpire, 800);
+      })();
+    </script>
+    
+    {%- comment -%}Aggressive main-thread optimization{%- endcomment -%}
+    <script>
+      // Break up long tasks to reduce main-thread blocking
+      (function() {
+        // Override setTimeout/setInterval to use scheduler API when available
+        var originalSetTimeout = window.setTimeout;
+        var originalSetInterval = window.setInterval;
+        
+        // Task scheduler to break up long tasks
+        window.scheduleTask = function(callback, priority) {
+          if ('scheduler' in window && 'postTask' in window.scheduler) {
+            return window.scheduler.postTask(callback, { priority: priority || 'background' });
+          }
+          return new Promise(function(resolve) {
+            originalSetTimeout(function() {
+              resolve(callback());
+            }, 0);
+          });
+        };
+        
+        // Reduce script evaluation time by deferring non-critical code
+        var deferredTasks = [];
+        window.deferTask = function(task) {
+          deferredTasks.push(task);
+        };
+        
+        // Execute deferred tasks during idle time
+        function executeDeferredTasks() {
+          if (deferredTasks.length === 0) return;
+          
+          if ('requestIdleCallback' in window) {
+            requestIdleCallback(function(deadline) {
+              while (deadline.timeRemaining() > 0 && deferredTasks.length > 0) {
+                var task = deferredTasks.shift();
+                try {
+                  task();
+                } catch (e) {
+                  console.warn('Deferred task error:', e);
+                }
+              }
+              if (deferredTasks.length > 0) {
+                executeDeferredTasks();
+              }
+            }, { timeout: 1000 });
+          } else {
+            originalSetTimeout(function() {
+              var task = deferredTasks.shift();
+              if (task) task();
+              if (deferredTasks.length > 0) executeDeferredTasks();
+            }, 16);
+          }
+        }
+        
+        // Start executing deferred tasks after page load
+        window.addEventListener('load', function() {
+          originalSetTimeout(executeDeferredTasks, 100);
+        });
       })();
     </script>
 
@@ -759,27 +849,45 @@
 
       
       <script defer>
-        // Optimize hero slideshow and promo images
+        // Optimize hero slideshow and promo images with mobile-specific optimization
         (function() {
           function optimizeImages() {
+            var isMobile = window.innerWidth <= 768;
+            
             // Add fetchpriority to first slideshow image (LCP optimization)
             var firstSlideImage = document.querySelector('.slideshow-slide__image');
             if (firstSlideImage) {
               firstSlideImage.setAttribute('fetchpriority', 'high');
               firstSlideImage.removeAttribute('loading');
               
-              // Optimize slideshow image srcset for actual display size
-              var currentSrc = firstSlideImage.getAttribute('src');
-              if (currentSrc && currentSrc.includes('1920x931')) {
-                // Replace with optimized size (1400x680 for desktop)
-                var optimizedSrc = currentSrc.replace('1920x931', '1400x680');
-                firstSlideImage.setAttribute('src', optimizedSrc);
-                
-                // Update srcset as well
-                var srcset = firstSlideImage.getAttribute('srcset');
-                if (srcset) {
-                  var optimizedSrcset = srcset.replace(/1920x931/g, '1400x680').replace(/1899x931/g, '1400x680');
-                  firstSlideImage.setAttribute('srcset', optimizedSrcset);
+              // Mobile-specific optimization
+              if (isMobile && firstSlideImage.classList.contains('slideshow-slide__image--mobile')) {
+                var currentSrc = firstSlideImage.getAttribute('src');
+                if (currentSrc && currentSrc.includes('1280x1600')) {
+                  // Optimize mobile banner: 1280x1600 → 750x940
+                  var optimizedSrc = currentSrc.replace('1280x1600', '750x940').replace('1280x1599', '750x940');
+                  firstSlideImage.setAttribute('src', optimizedSrc);
+                  
+                  var srcset = firstSlideImage.getAttribute('srcset');
+                  if (srcset) {
+                    var optimizedSrcset = srcset.replace(/1280x1600/g, '750x940').replace(/1280x1599/g, '750x940');
+                    firstSlideImage.setAttribute('srcset', optimizedSrcset);
+                  }
+                }
+              }
+              
+              // Desktop optimization
+              if (!isMobile) {
+                var currentSrc = firstSlideImage.getAttribute('src');
+                if (currentSrc && currentSrc.includes('1920x931')) {
+                  var optimizedSrc = currentSrc.replace('1920x931', '1400x680');
+                  firstSlideImage.setAttribute('src', optimizedSrc);
+                  
+                  var srcset = firstSlideImage.getAttribute('srcset');
+                  if (srcset) {
+                    var optimizedSrcset = srcset.replace(/1920x931/g, '1400x680').replace(/1899x931/g, '1400x680');
+                    firstSlideImage.setAttribute('srcset', optimizedSrcset);
+                  }
                 }
               }
             }
@@ -789,16 +897,45 @@
             allSlideImages.forEach(function(img, index) {
               if (index === 0) return; // Skip first (already optimized)
               
-              var src = img.getAttribute('src');
-              if (src && src.includes('1920x931')) {
-                img.setAttribute('src', src.replace('1920x931', '1400x680'));
-              }
-              
-              var srcset = img.getAttribute('srcset');
-              if (srcset) {
-                img.setAttribute('srcset', srcset.replace(/1920x931/g, '1400x680').replace(/1899x931/g, '1400x680'));
+              if (isMobile && img.classList.contains('slideshow-slide__image--mobile')) {
+                var src = img.getAttribute('src');
+                if (src && (src.includes('1280x1600') || src.includes('1280x1599'))) {
+                  img.setAttribute('src', src.replace(/1280x16\d{2}/g, '750x940'));
+                }
+                
+                var srcset = img.getAttribute('srcset');
+                if (srcset) {
+                  img.setAttribute('srcset', srcset.replace(/1280x16\d{2}/g, '750x940'));
+                }
+              } else if (!isMobile) {
+                var src = img.getAttribute('src');
+                if (src && src.includes('1920x931')) {
+                  img.setAttribute('src', src.replace('1920x931', '1400x680'));
+                }
+                
+                var srcset = img.getAttribute('srcset');
+                if (srcset) {
+                  img.setAttribute('srcset', srcset.replace(/1920x931/g, '1400x680').replace(/1899x931/g, '1400x680'));
+                }
               }
             });
+            
+            // Optimize logo for mobile
+            var logoImage = document.querySelector('.site-logo-image');
+            if (logoImage && isMobile) {
+              var logoSrc = logoImage.getAttribute('src');
+              if (logoSrc && logoSrc.includes('2024x500')) {
+                // Optimize mobile logo: 2024x500 → 450x111
+                var optimizedLogoSrc = logoSrc.replace(/2024x500/g, '450x111').replace(/x200/g, 'x111');
+                logoImage.setAttribute('src', optimizedLogoSrc);
+                
+                var logoSrcset = logoImage.getAttribute('srcset');
+                if (logoSrcset) {
+                  var optimizedLogoSrcset = logoSrcset.replace(/2024x500/g, '450x111').replace(/@2x/g, '');
+                  logoImage.setAttribute('srcset', optimizedLogoSrcset);
+                }
+              }
+            }
             
             // Optimize promo-mosaic background images
             var promoBlocks = document.querySelectorAll('.promo-block[data-rimg-template]');
@@ -841,6 +978,13 @@
           
           // Run on dynamic section load (Shopify theme editor)
           document.addEventListener('shopify:section:load', optimizeImages);
+          
+          // Re-optimize on resize (mobile/desktop switch)
+          var resizeTimeout;
+          window.addEventListener('resize', function() {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(optimizeImages, 200);
+          });
         })();
         
         // Load Swiper library conditionally
@@ -1142,6 +1286,30 @@
             }
             return originalFind.call(this, selector);
           };
+          
+          // Optimize jQuery animations to use CSS when possible
+          var originalAnimate = jQuery.fn.animate;
+          jQuery.fn.animate = function(properties, duration, easing, complete) {
+            // For simple transforms, use CSS transitions
+            var canUseCSS = true;
+            for (var prop in properties) {
+              if (!['opacity', 'left', 'top', 'right', 'bottom'].includes(prop)) {
+                canUseCSS = false;
+                break;
+              }
+            }
+            
+            if (canUseCSS && duration < 1000) {
+              this.css('transition', 'all ' + (duration || 400) + 'ms ease');
+              this.css(properties);
+              if (complete) {
+                setTimeout(complete.bind(this[0]), duration || 400);
+              }
+              return this;
+            }
+            
+            return originalAnimate.call(this, properties, duration, easing, complete);
+          };
         }
         
         // Try to optimize after jQuery loads
@@ -1165,6 +1333,82 @@
               styleQueue = [];
               styleFlushScheduled = false;
             });
+          }
+        };
+        
+        // Reduce garbage collection by reusing objects
+        var objectPool = [];
+        window.getPooledObject = function() {
+          return objectPool.pop() || {};
+        };
+        
+        window.releasePooledObject = function(obj) {
+          for (var key in obj) {
+            delete obj[key];
+          }
+          if (objectPool.length < 50) {
+            objectPool.push(obj);
+          }
+        };
+        
+        // Optimize event delegation
+        var delegatedEvents = {};
+        window.optimizedDelegate = function(selector, event, handler) {
+          var key = event + ':' + selector;
+          if (!delegatedEvents[key]) {
+            delegatedEvents[key] = [];
+            document.addEventListener(event, function(e) {
+              var target = e.target.closest(selector);
+              if (target) {
+                delegatedEvents[key].forEach(function(h) {
+                  h.call(target, e);
+                });
+              }
+            }, { passive: true });
+          }
+          delegatedEvents[key].push(handler);
+        };
+      })();
+    </script>
+    
+    {% comment %} Reduce Script Evaluation with code splitting {% endcomment %}
+    <script>
+      // Split heavy operations into chunks
+      (function() {
+        // Chunk processor for heavy operations
+        window.processInChunks = function(items, processor, callback) {
+          var index = 0;
+          var chunkSize = 10;
+          
+          function processChunk() {
+            var end = Math.min(index + chunkSize, items.length);
+            
+            for (var i = index; i < end; i++) {
+              processor(items[i], i);
+            }
+            
+            index = end;
+            
+            if (index < items.length) {
+              setTimeout(processChunk, 0);
+            } else if (callback) {
+              callback();
+            }
+          }
+          
+          processChunk();
+        };
+        
+        // Lazy initialize features
+        var initializedFeatures = {};
+        window.lazyInit = function(featureName, initFunction) {
+          if (initializedFeatures[featureName]) return;
+          initializedFeatures[featureName] = true;
+          
+          if ('requestIdleCallback' in window) {
+            requestIdleCallback(initFunction, { timeout: 2000 });
+          } else {
+            setTimeout(initFunction, 100);
           }
         };
       })();

@@ -207,3 +207,164 @@ body:not(.loaded) {
   content-visibility: auto;
   contain-intrinsic-size: 0 300px;
 }
+
+/* Aggressive Style & Layout Optimization (683ms reduction) */
+/* Reduce layout thrashing with strict containment */
+.site-header,
+.site-header-main,
+.site-nav,
+.site-nav-dropdown {
+  contain: layout style paint;
+}
+
+.productgrid--outer,
+.collection-main {
+  contain: layout style paint;
+}
+
+.productitem,
+.productitem--outer {
+  contain: layout style paint;
+  content-visibility: auto;
+  contain-intrinsic-size: 0 400px;
+}
+
+/* Optimize product images for faster rendering */
+.productitem--image,
+.productitem--image-link {
+  contain: layout style paint;
+}
+
+/* Reduce reflow triggers */
+* {
+  box-sizing: border-box;
+}
+
+/* Optimize animations to use GPU */
+@media (prefers-reduced-motion: no-preference) {
+  .productitem--image-alternate,
+  .modal,
+  .drawer,
+  .quickshop {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    perspective: 1000px;
+  }
+}
+
+/* Minimize paint areas */
+.site-footer,
+.site-footer-main,
+.footer-block {
+  contain: layout style paint;
+  content-visibility: auto;
+  contain-intrinsic-size: 0 200px;
+}
+
+/* Optimize form elements to reduce layout */
+input,
+select,
+textarea,
+button {
+  contain: layout style;
+}
+
+/* Reduce rendering complexity */
+.modal-wrapper,
+.drawer-wrapper,
+.quickshop-wrapper,
+.cart-drawer {
+  contain: layout style paint;
+  will-change: auto;
+}
+
+/* Optimize badge rendering */
+.productitem--badge,
+.product-badge,
+.akta-badges,
+.badge {
+  contain: layout style paint;
+  transform: translateZ(0);
+}
+
+/* Reduce garbage collection with efficient selectors */
+[data-section-type],
+[data-section-id] {
+  contain: layout style;
+}
+
+/* Optimize third-party containers */
+[id*="limespot"],
+[id*="plerdy"],
+[id*="autoketing"],
+[class*="smile-"] {
+  content-visibility: auto;
+  contain: layout style paint;
+}
+
+/* Mobile-Specific Optimizations */
+@media (max-width: 768px) {
+  /* Aggressive mobile image optimization */
+  .slideshow-slide__image--mobile {
+    max-width: 100%;
+    height: auto;
+    image-rendering: -webkit-optimize-contrast;
+  }
+  
+  /* Optimize mobile logo */
+  .site-logo-image {
+    max-width: 200px;
+    height: auto;
+  }
+  
+  /* Reduce mobile layout complexity */
+  .productgrid {
+    contain: layout style paint;
+  }
+  
+  .productitem {
+    contain: layout style paint;
+    content-visibility: auto;
+    contain-intrinsic-size: 0 350px;
+  }
+  
+  /* Mobile header optimization */
+  .site-header {
+    contain: layout style paint;
+    will-change: auto;
+  }
+  
+  /* Optimize mobile navigation */
+  .site-mobile-nav {
+    contain: layout style paint;
+    content-visibility: auto;
+  }
+  
+  /* Reduce mobile footer complexity */
+  .site-footer {
+    contain: layout style paint;
+    content-visibility: auto;
+    contain-intrinsic-size: 0 250px;
+  }
+  
+  /* Mobile image lazy loading optimization */
+  img[loading="lazy"] {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 200px;
+  }
+  
+  /* Optimize mobile modals */
+  .modal,
+  .drawer,
+  .quickshop {
+    contain: layout style paint;
+    transform: translateZ(0);
+  }
+  
+  /* Mobile GPU acceleration */
+  .productitem--image-alternate,
+  .slideshow-slide {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+  }
+}

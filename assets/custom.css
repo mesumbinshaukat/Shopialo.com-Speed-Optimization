@@ -176,3 +176,34 @@ input, select, textarea, button {
   overflow: hidden;
   contain: layout style paint;
 }
+
+/* JavaScript Execution Optimization */
+/* Reduce reflows and repaints during script execution */
+.js-loading * {
+  pointer-events: none;
+}
+
+/* Optimize third-party script containers */
+[data-deferred="true"] {
+  content-visibility: auto;
+}
+
+/* Reduce complexity during initial load */
+body:not(.loaded) {
+  contain: layout style;
+}
+
+/* Optimize heavy DOM elements */
+.modal-wrapper,
+.drawer-wrapper,
+.quickshop-wrapper {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 500px;
+}
+
+/* Defer non-visible content rendering */
+.footer-content,
+.site-footer-bottom {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 300px;
+}

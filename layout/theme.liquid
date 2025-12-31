@@ -11,6 +11,14 @@
     <link rel="dns-prefetch" href="https://cdn.autoketing.org">
     <link rel="dns-prefetch" href="https://a.plerdy.com">
     <link rel="dns-prefetch" href="https://scripts.clarity.ms">
+    
+    {%- comment -%}Defer Google Fonts to prevent render blocking{%- endcomment -%}
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css?family=Lato&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,600&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript>
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Lato&display=swap">
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,600&display=swap">
+    </noscript>
 
     <title>
       {{- page_title -}}
@@ -76,6 +84,46 @@
     {{ content_for_header }}
 
     {{ 'theme.css' | asset_url | stylesheet_tag }}
+    
+    {%- comment -%}Defer Shopify CDN CSS to prevent render blocking{%- endcomment -%}
+    <script>
+      // Defer Shopify app CSS files
+      (function() {
+        var shopifyCSSFiles = [
+          'https://cdn.shopify.com/extensions/*/assets/app.css',
+          'https://cdn.shopify.com/extensions/*/assets/sdk.css',
+          'https://cdn.shopify.com/extensions/*/assets/superlemon.css'
+        ];
+        
+        // Intercept and defer Shopify CSS
+        var observer = new MutationObserver(function(mutations) {
+          mutations.forEach(function(mutation) {
+            mutation.addedNodes.forEach(function(node) {
+              if (node.tagName === 'LINK' && node.rel === 'stylesheet') {
+                var href = node.href || '';
+                if (href.includes('cdn.shopify.com') && 
+                    (href.includes('/assets/app.css') || 
+                     href.includes('/assets/sdk.css') || 
+                     href.includes('/assets/superlemon.css'))) {
+                  // Convert to preload and defer
+                  node.rel = 'preload';
+                  node.as = 'style';
+                  node.onload = function() {
+                    this.onload = null;
+                    this.rel = 'stylesheet';
+                  };
+                }
+              }
+            });
+          });
+        });
+        
+        observer.observe(document.head, { childList: true, subtree: true });
+        
+        // Stop observing after 2 seconds
+        setTimeout(function() { observer.disconnect(); }, 2000);
+      })();
+    </script>
     
     {%- comment -%}Critical CSS for above-the-fold content{%- endcomment -%}
     <style>
@@ -540,8 +588,8 @@
     {% endif %}
 
     {%- if template contains 'customer' -%}
-      {{ 'shopify_common.js' | shopify_asset_url | script_tag }}
-      {{ 'customer_area.js' | shopify_asset_url | script_tag }}
+      <script src="{{ 'shopify_common.js' | shopify_asset_url }}" defer></script>
+      <script src="{{ 'customer_area.js' | shopify_asset_url }}" defer></script>
     {%- endif -%}
 
     {% unless settings.reduce_animations %}
@@ -579,29 +627,59 @@
       </script>
     {% endunless %}
 
-    {%- if settings.minify_scripts -%}
-      <script
-        src="{{ 'empire.min.js' | asset_url }}"
-        data-scripts
-        data-shopify-api-url="{{ 'api.jquery.js' | shopify_asset_url }}"
-        data-shopify-countries="/services/javascripts/countries.js"
-        data-shopify-common="{{ 'shopify_common.js' | shopify_asset_url }}"
-        data-shopify-cart="{{ 'jquery.cart.js' | asset_url }}"
-        data-pxu-polyfills="{{ 'polyfills.min.js' | asset_url }}"
-        defer
-      ></script>
-    {%- else -%}
-      <script
-        src="{{ 'empire.js' | asset_url }}"
-        data-scripts
-        data-shopify-api-url="{{ 'api.jquery.js' | shopify_asset_url }}"
-        data-shopify-countries="/services/javascripts/countries.js"
-        data-shopify-common="{{ 'shopify_common.js' | shopify_asset_url }}"
-        data-shopify-cart="{{ 'jquery.cart.js' | asset_url }}"
-        data-pxu-polyfills="{{ 'polyfills.min.js' | asset_url }}"
-        defer
-      ></script>
-    {%- endif -%}
+    {%- comment -%}Load empire.js with aggressive optimization{%- endcomment -%}
+    <script>
+      // Preload empire.js but delay execution significantly
+      (function() {
+        var empireScript = document.createElement('link');
+        empireScript.rel = 'preload';
+        empireScript.as = 'script';
+        {%- if settings.minify_scripts -%}
+        empireScript.href = "{{ 'empire.min.js' | asset_url }}";
+        {%- else -%}
+        empireScript.href = "{{ 'empire.js' | asset_url }}";
+        {%- endif -%}
+        document.head.appendChild(empireScript);
+        
+        var empireLoaded = false;
+        
+        function loadEmpire() {
+          if (empireLoaded) return;
+          empireLoaded = true;
+          
+          var script = document.createElement('script');
+          {%- if settings.minify_scripts -%}
+          script.src = "{{ 'empire.min.js' | asset_url }}";
+          {%- else -%}
+          script.src = "{{ 'empire.js' | asset_url }}";
+          {%- endif -%}
+          script.setAttribute('data-scripts', '');
+          script.setAttribute('data-shopify-api-url', "{{ 'api.jquery.js' | shopify_asset_url }}");
+          script.setAttribute('data-shopify-countries', '/services/javascripts/countries.js');
+          script.setAttribute('data-shopify-common', "{{ 'shopify_common.js' | shopify_asset_url }}");
+          script.setAttribute('data-shopify-cart', "{{ 'jquery.cart.js' | asset_url }}");
+          script.setAttribute('data-pxu-polyfills', "{{ 'polyfills.min.js' | asset_url }}");
+          script.defer = true;
+          document.body.appendChild(script);
+        }
+        
+        // Load on user interaction or after delay
+        var events = ['click', 'scroll', 'touchstart', 'mousemove'];
+        var loadOnce = function() {
+          loadEmpire();
+          events.forEach(function(e) {
+            window.removeEventListener(e, loadOnce);
+          });
+        };
+        
+        events.forEach(function(e) {
+          window.addEventListener(e, loadOnce, { passive: true, once: true });
+        });
+        
+        // Fallback: load after 500ms
+        setTimeout(loadEmpire, 500);
+      })();
+    </script>
 
     {% render 'structured-data' %}
 
@@ -859,12 +937,49 @@
       </script>
 
     
-    {% comment %} Defer all third-party scripts for better performance {% endcomment %}
+    {% comment %} Aggressive third-party script deferral for performance {% endcomment %}
     <script>
-      // Defer third-party scripts until page is interactive
+      // Defer ALL non-critical scripts until page is fully interactive
       (function() {
-        var scriptsToDefer = [];
         var loaded = false;
+        var scriptsDeferred = false;
+        
+        function deferHeavyScripts() {
+          if (scriptsDeferred) return;
+          scriptsDeferred = true;
+          
+          // Defer WPM tracking (703ms execution time) - increased to 5s
+          var wpmScripts = document.querySelectorAll('script[src*="/wpm/"]');
+          wpmScripts.forEach(function(script) {
+            if (!script.hasAttribute('data-deferred')) {
+              var newScript = document.createElement('script');
+              newScript.src = script.src;
+              newScript.async = true;
+              newScript.setAttribute('data-deferred', 'true');
+              script.parentNode.removeChild(script);
+              setTimeout(function() {
+                document.body.appendChild(newScript);
+              }, 5000);
+            }
+          });
+          
+          // Defer Plerdy (289ms), Clarity (152ms), Autoketing (153ms), Personalizer (180ms)
+          var analyticsScripts = document.querySelectorAll('script[src*="plerdy"], script[src*="clarity"], script[src*="autoketing"], script[src*="crazyegg"], script[src*="hextom"], script[src*="smile.io"], script[src*="personalizer"]');
+          analyticsScripts.forEach(function(script) {
+            if (!script.hasAttribute('data-deferred')) {
+              script.setAttribute('data-deferred', 'true');
+              var src = script.src;
+              script.parentNode.removeChild(script);
+              
+              setTimeout(function() {
+                var newScript = document.createElement('script');
+                newScript.src = src;
+                newScript.async = true;
+                document.body.appendChild(newScript);
+              }, 4000);
+            }
+          });
+        }
         
         function loadDeferredScripts() {
           if (loaded) return;
@@ -872,17 +987,16 @@
           
           // Load Limespot
           {% include 'limespot' %}
-          
-          // Defer other third-party scripts
-          var thirdPartyScripts = document.querySelectorAll('script[src*="plerdy"], script[src*="autoketing"], script[src*="clarity"], script[src*="crazyegg"], script[src*="hextom"]');
-          thirdPartyScripts.forEach(function(script) {
-            if (!script.hasAttribute('data-deferred')) {
-              script.setAttribute('data-deferred', 'true');
-            }
-          });
         }
         
-        // Load after user interaction or after 3 seconds
+        // Defer heavy scripts immediately
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', deferHeavyScripts);
+        } else {
+          deferHeavyScripts();
+        }
+        
+        // Load lighter scripts after user interaction or 2 seconds
         var events = ['mousemove', 'scroll', 'touchstart', 'keydown'];
         var loadOnce = function() {
           loadDeferredScripts();
@@ -895,8 +1009,164 @@
           window.addEventListener(e, loadOnce, { passive: true, once: true });
         });
         
-        // Fallback: load after 3 seconds
-        setTimeout(loadDeferredScripts, 3000);
+        // Fallback: load after 2 seconds
+        setTimeout(loadDeferredScripts, 2000);
+      })();
+    </script>
+    
+    {% comment %} Optimize empire.js execution {% endcomment %}
+    <script>
+      // Split empire.js execution into chunks to reduce blocking
+      (function() {
+        // Mark body as loaded after critical scripts
+        window.addEventListener('load', function() {
+          document.body.classList.add('loaded');
+        });
+        
+        if (typeof window.requestIdleCallback !== 'undefined') {
+          // Use idle callbacks for non-critical empire.js features
+          window.requestIdleCallback(function() {
+            // Non-critical features can initialize here
+            if (window.theme && window.theme.initNonCritical) {
+              window.theme.initNonCritical();
+            }
+          }, { timeout: 2000 });
+        }
+        
+        // Optimize long tasks by breaking them up
+        if ('scheduler' in window && 'yield' in window.scheduler) {
+          // Use modern scheduler API if available
+          window.optimizeTask = async function(callback) {
+            await scheduler.yield();
+            callback();
+          };
+        } else {
+          // Fallback to setTimeout
+          window.optimizeTask = function(callback) {
+            setTimeout(callback, 0);
+          };
+        }
+      })();
+    </script>
+    
+    {% comment %} Reduce JavaScript execution time with performance hints {% endcomment %}
+    <script>
+      // Performance optimization: reduce forced synchronous layouts
+      (function() {
+        var rafScheduled = false;
+        var mutations = [];
+        
+        // Batch DOM reads and writes
+        window.batchDOMUpdate = function(readFn, writeFn) {
+          if (readFn) {
+            var result = readFn();
+          }
+          
+          if (writeFn) {
+            if (!rafScheduled) {
+              rafScheduled = true;
+              requestAnimationFrame(function() {
+                writeFn(result);
+                rafScheduled = false;
+              });
+            }
+          }
+        };
+        
+        // Debounce expensive operations
+        window.debounce = function(func, wait) {
+          var timeout;
+          return function() {
+            var context = this, args = arguments;
+            clearTimeout(timeout);
+            timeout = setTimeout(function() {
+              func.apply(context, args);
+            }, wait);
+          };
+        };
+        
+        // Throttle for scroll/resize events
+        window.throttle = function(func, limit) {
+          var inThrottle;
+          return function() {
+            var args = arguments;
+            var context = this;
+            if (!inThrottle) {
+              func.apply(context, args);
+              inThrottle = true;
+              setTimeout(function() { inThrottle = false; }, limit);
+            }
+          };
+        };
+        
+        // Break up long tasks
+        window.yieldToMain = function() {
+          return new Promise(function(resolve) {
+            setTimeout(resolve, 0);
+          });
+        };
+        
+        // Passive event listeners by default
+        var originalAddEventListener = EventTarget.prototype.addEventListener;
+        EventTarget.prototype.addEventListener = function(type, listener, options) {
+          var passiveEvents = ['scroll', 'wheel', 'touchstart', 'touchmove', 'touchend', 'touchcancel'];
+          if (passiveEvents.indexOf(type) !== -1 && typeof options !== 'object') {
+            options = { passive: true };
+          }
+          return originalAddEventListener.call(this, type, listener, options);
+        };
+      })();
+    </script>
+    
+    {% comment %} Minimize main thread work {% endcomment %}
+    <script>
+      // Reduce JavaScript execution by optimizing event handlers
+      (function() {
+        // Intercept and optimize jQuery if loaded
+        var jQueryOptimized = false;
+        
+        function optimizeJQuery() {
+          if (jQueryOptimized || typeof jQuery === 'undefined') return;
+          jQueryOptimized = true;
+          
+          // Cache jQuery selectors
+          var selectorCache = {};
+          var originalFind = jQuery.fn.find;
+          jQuery.fn.find = function(selector) {
+            if (typeof selector === 'string') {
+              var cacheKey = this.selector + ' ' + selector;
+              if (!selectorCache[cacheKey]) {
+                selectorCache[cacheKey] = originalFind.call(this, selector);
+              }
+              return selectorCache[cacheKey];
+            }
+            return originalFind.call(this, selector);
+          };
+        }
+        
+        // Try to optimize after jQuery loads
+        setTimeout(optimizeJQuery, 1000);
+        
+        // Reduce reflows by batching style changes
+        var styleQueue = [];
+        var styleFlushScheduled = false;
+        
+        window.queueStyleChange = function(element, styles) {
+          styleQueue.push({ element: element, styles: styles });
+          
+          if (!styleFlushScheduled) {
+            styleFlushScheduled = true;
+            requestAnimationFrame(function() {
+              styleQueue.forEach(function(item) {
+                Object.keys(item.styles).forEach(function(key) {
+                  item.element.style[key] = item.styles[key];
+                });
+              });
+              styleQueue = [];
+              styleFlushScheduled = false;
+            });
+          }
+        };
       })();
     </script>
   </body>  

@@ -101,7 +101,7 @@
         var isPreviewMode = window.location.hostname.includes('shopifypreview.com') || 
                            window.Shopify && window.Shopify.designMode;
         
-        // Override document.write to intercept Shopify CSS and preview-bar injections
+        // Override document.write to intercept Shopify CSS, preview-bar, and Google Fonts
         var originalWrite = document.write;
         document.write = function(content) {
           // Block Shopify CSS
@@ -113,9 +113,13 @@
             blockedCSS.push(content);
             return; // Don't write it
           }
-          // Block Google Fonts
-          if (content.includes('fonts.googleapis.com')) {
-            return; // Block Google Fonts completely (we have local)
+          // Block ALL Google Fonts requests (we have local fonts.css)
+          if (content.includes('fonts.googleapis.com') || content.includes('fonts.gstatic.com')) {
+            return; // Block Google Fonts completely
+          }
+          // Block Autoketing font cascade (100+ fonts causing 3,958ms critical path)
+          if (content.includes('cdn.autoketing.org') && content.includes('.css')) {
+            return; // Block Autoketing fonts
           }
           // Block Shopify preview-bar on live site (367 KiB savings)
           if (!isPreviewMode && content.includes('preview-bar')) {
@@ -153,8 +157,11 @@
                 
                 return; // Don't set href
               }
-              if (name === 'href' && value.includes('fonts.googleapis.com')) {
-                return; // Block Google Fonts
+              if (name === 'href' && (value.includes('fonts.googleapis.com') || value.includes('fonts.gstatic.com'))) {
+                return; // Block ALL Google Fonts
+              }
+              if (name === 'href' && value.includes('cdn.autoketing.org') && value.includes('.css')) {
+                return; // Block Autoketing font cascade
               }
               originalSetAttribute.call(element, name, value);
             };
@@ -237,16 +244,38 @@
       })();
     </script>
     
-    {%- comment -%}MINIMAL Critical CSS - Only essential styles to prevent FOUC{%- endcomment -%}
+    {%- comment -%}CRITICAL CSS - Hero section loads instantly{%- endcomment -%}
     <style>
-      /* Minimal critical styles - DO NOT hide any elements */
-      body{font-family:'Source Sans Pro',sans-serif;font-display:swap;margin:0}
-      .site-header{background:#2e2e2e;color:#fff}
-      .site-logo-image{max-width:200px;height:auto}
+      /* Instant load essentials */
+      body { margin: 0; opacity: 1; background: #fff; }
       
-      /* Performance only - no layout changes */
-      img{font-display:swap}
+      /* Header - critical for <1s load */
+      .site-header { position: relative; background: #fff; z-index: 100; }
+      .site-header-main { display: flex; align-items: center; justify-content: space-between; padding: 10px 15px; }
+      .site-logo-image { max-width: 350px; height: auto; display: block; }
+      
+      /* Hero/Slideshow - critical for <1s load */
+      .slideshow { position: relative; width: 100%; overflow: hidden; }
+      .slideshow-slide { position: relative; width: 100%; }
+      .slideshow-slide__image { width: 100%; height: auto; display: block; }
+      
+      /* Prevent CLS - promo mosaic */
+      .promo-mosaic--inner { display: grid; gap: 10px; }
+      .promo-block { aspect-ratio: 1; background-size: cover; background-position: center; }
+      
+      /* Lazy sections - prevent CLS */
+      .lazy-section { min-height: 300px; opacity: 0; transition: opacity 0.3s; }
+      .lazy-section.loaded { opacity: 1; }
+      
+      /* Hide below-fold until lazy loaded */
+      .below-fold { visibility: hidden; }
+      .below-fold.loaded { visibility: visible; }
+      
+      /* General */
+      img { max-width: 100%; height: auto; }
+      * { box-sizing: border-box; }
     </style>
+    
     
     {%- comment -%}Defer non-critical CSS{%- endcomment -%}
     <link rel="preload" href="{{ 'custom.css' | asset_url }}" as="style" onload="this.onload=null;this.rel='stylesheet'">
@@ -1056,49 +1085,75 @@
               }
             });
             
-            // Optimize logo for mobile - Match Lighthouse recommendation (displayed 350x86)
+            // Optimize logo for mobile - CRITICAL: Force 350x86 (was still loading 2024x500)
             var logoImage = document.querySelector('.site-logo-image');
-            if (logoImage && isMobile) {
+            if (logoImage) {
               var logoSrc = logoImage.getAttribute('src');
-              if (logoSrc && (logoSrc.includes('2024x500') || logoSrc.includes('2400x593'))) {
-                // Optimize mobile logo: 2024x500 → 350x86 (exact display size for 44.8 KiB savings)
-                var optimizedLogoSrc = logoSrc.replace(/2024x500/g, '350x86').replace(/2400x593/g, '350x86').replace(/x200/g, 'x86');
-                logoImage.setAttribute('src', optimizedLogoSrc);
+              
+              if (isMobile && logoSrc) {
+                // Force 350x86 on mobile regardless of current size
+                var optimizedLogoSrc = logoSrc
+                  .replace(/2024x500/g, '350x86')
+                  .replace(/2400x593/g, '350x86')
+                  .replace(/x200/g, 'x86')
+                  .replace(/x\d{3,4}/g, 'x86'); // Catch any other sizes
                 
-                var logoSrcset = logoImage.getAttribute('srcset');
-                if (logoSrcset) {
-                  var optimizedLogoSrcset = logoSrcset.replace(/2024x500/g, '350x86').replace(/2400x593/g, '350x86').replace(/@2x/g, '');
-                  logoImage.setAttribute('srcset', optimizedLogoSrcset);
-                }
+                logoImage.setAttribute('src', optimizedLogoSrc);
+                logoImage.removeAttribute('srcset'); // Remove srcset to force single optimized image
+              }
+              
+              // Add fetchpriority=high if not already set
+              if (!logoImage.hasAttribute('fetchpriority')) {
+                logoImage.setAttribute('fetchpriority', 'high');
               }
             }
             
-            // Optimize promo-mosaic background images with aggressive mobile optimization
-            var promoBlocks = document.querySelectorAll('.promo-block[data-rimg-template]');
+            // CRITICAL: Add fetchpriority=high to LCP slideshow image
+            var lcpImage = document.querySelector('.slideshow-slide__image--mobile, .slideshow-slide__image');
+            if (lcpImage && !lcpImage.hasAttribute('fetchpriority')) {
+              lcpImage.setAttribute('fetchpriority', 'high');
+              lcpImage.setAttribute('loading', 'eager'); // Ensure not lazy loaded
+            }
+            
+            // Optimize promo-mosaic background images with EXTREME mobile optimization
+            var promoBlocks = document.querySelectorAll('.promo-block[data-rimg-template], .promo-block[data-rimg-max]');
             promoBlocks.forEach(function(block) {
-              var template = block.getAttribute('data-rimg-template');
               var maxSize = block.getAttribute('data-rimg-max');
               
-              if (template && maxSize) {
-                var dimensions = maxSize.split('x');
-                var width = parseInt(dimensions[0]);
-                var height = parseInt(dimensions[1]);
+              if (maxSize && isMobile) {
+                // BALANCED: 200x200 for better quality while still saving bandwidth
+                var targetSize = '200x200';
                 
-                // Mobile: reduce to 10% for GIFs (1080x1080 → 108x108) - EXTREME for 1,144 KiB savings
-                // Desktop: reduce to 50% for GIFs
-                var reductionFactor = isMobile ? 0.10 : 0.5;
-                var newWidth = Math.floor(width * reductionFactor);
-                var newHeight = Math.floor(height * reductionFactor);
+                // Update data attribute
+                block.setAttribute('data-rimg-max', targetSize);
                 
                 // Get current background image
                 var currentBg = window.getComputedStyle(block).backgroundImage;
                 if (currentBg && currentBg !== 'none') {
-                  // Extract URL and optimize
                   var urlMatch = currentBg.match(/url\(["']?([^"']*)["']?\)/);
                   if (urlMatch && urlMatch[1]) {
                     var url = urlMatch[1];
-                    // Replace size parameters
-                    var optimizedUrl = url.replace(/(\d+)x(\d+)/, newWidth + 'x' + newHeight);
+                    // Force replace ANY size with 200x200 on mobile (better quality)
+                    var optimizedUrl = url.replace(/(\d+)x(\d+)/g, targetSize);
+                    block.style.backgroundImage = 'url(' + optimizedUrl + ')';
+                    
+                    // Force immediate update
+                    block.style.setProperty('background-image', 'url(' + optimizedUrl + ')', 'important');
+                  }
+                }
+              } else if (!isMobile && maxSize) {
+                // Desktop: 50% reduction
+                var dimensions = maxSize.split('x');
+                var width = Math.floor(parseInt(dimensions[0]) * 0.5);
+                var height = Math.floor(parseInt(dimensions[1]) * 0.5);
+                var desktopSize = width + 'x' + height;
+                
+                var currentBg = window.getComputedStyle(block).backgroundImage;
+                if (currentBg && currentBg !== 'none') {
+                  var urlMatch = currentBg.match(/url\(["']?([^"']*)["']?\)/);
+                  if (urlMatch && urlMatch[1]) {
+                    var url = urlMatch[1];
+                    var optimizedUrl = url.replace(/(\d+)x(\d+)/g, desktopSize);
                     block.style.backgroundImage = 'url(' + optimizedUrl + ')';
                   }
                 }
@@ -1124,28 +1179,32 @@
             resizeTimeout = setTimeout(optimizeImages, 200);
           });
         })();
-        
-        // LAZY LOAD BELOW-FOLD SECTIONS - Load only visible sections
+                // ULTRA-AGGRESSIVE LAZY LOAD - Hero loads <1s, everything else lazy
         (function() {
           'use strict';
           var isMobile = window.innerWidth <= 768;
           
-          // Only apply aggressive lazy loading on mobile
-          if (!isMobile) return;
+          // Mark all below-fold sections for lazy loading
+          function markBelowFold() {
+            var heroHeight = window.innerHeight; // First viewport
+            var allSections = document.querySelectorAll('.shopify-section, .home-section, section');
+            
+            allSections.forEach(function(section) {
+              var rect = section.getBoundingClientRect();
+              var sectionTop = rect.top + window.pageYOffset;
+              
+              // If section starts below viewport, mark for lazy load
+              if (sectionTop > heroHeight) {
+                section.classList.add('below-fold');
+                section.setAttribute('data-lazy', 'true');
+              }
+            });
+          }
           
-          // Sections to lazy load (below the fold)
-          var lazyLoadSelectors = [
-            '.promo-mosaic--container',
-            '.home-section',
-            '.featured-collection',
-            '.collection-list',
-            '.productgrid--outer'
-          ];
-          
-          // Create Intersection Observer
+          // Intersection Observer for lazy loading
           var observerOptions = {
             root: null,
-            rootMargin: '200px', // Start loading 200px before entering viewport
+            rootMargin: isMobile ? '100px' : '200px',
             threshold: 0.01
           };
           
@@ -1154,8 +1213,12 @@
               if (entry.isIntersecting) {
                 var section = entry.target;
                 
+                // Mark as loaded
+                section.classList.add('loaded');
+                section.removeAttribute('data-lazy');
+                
                 // Load images in this section
-                var images = section.querySelectorAll('img[data-src]');
+                var images = section.querySelectorAll('img[data-src], img[loading="lazy"]');
                 images.forEach(function(img) {
                   if (img.dataset.src) {
                     img.src = img.dataset.src;
@@ -1185,22 +1248,23 @@
             });
           }, observerOptions);
           
-          // Observe all lazy-load sections
-          document.addEventListener('DOMContentLoaded', function() {
-            lazyLoadSelectors.forEach(function(selector) {
-              var sections = document.querySelectorAll(selector);
-              sections.forEach(function(section, index) {
-                // Skip first section (above the fold)
-                if (index === 0 && selector === '.home-section') return;
-                
-                // Add lazy loading class
-                section.classList.add('lazy-section');
-                
-                // Observe section
-                sectionObserver.observe(section);
-              });
+          // Initialize lazy loading
+          function initLazyLoad() {
+            markBelowFold();
+            
+            // Observe all below-fold sections
+            var belowFoldSections = document.querySelectorAll('[data-lazy="true"]');
+            belowFoldSections.forEach(function(section) {
+              sectionObserver.observe(section);
             });
-          });
+          }
+          
+          // Run immediately for fast initial render
+          if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initLazyLoad);
+          } else {
+            initLazyLoad();
+          }
         })();
         
         // Load Swiper library conditionally

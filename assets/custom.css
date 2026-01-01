@@ -354,12 +354,19 @@ button {
     transform: translateZ(0);
   }
   
-  /* Mobile GPU acceleration - AGGRESSIVE */
+  /* Mobile GPU acceleration - EXTREME for Rendering reduction */
   .productitem--image-alternate,
-  .slideshow-slide {
+  .slideshow-slide,
+  .productitem--image-primary,
+  img {
     transform: translate3d(0, 0, 0);
     backface-visibility: hidden;
     will-change: transform;
+  }
+  
+  /* Force GPU compositing on all images */
+  img {
+    transform: translateZ(0);
   }
   
   /* Reduce mobile rendering complexity */
@@ -374,11 +381,27 @@ button {
     -webkit-tap-highlight-color: transparent;
   }
   
-  /* Reduce mobile paint complexity */
+  /* Reduce mobile paint complexity - EXTREME containment */
   .site-nav,
   .site-nav-dropdown,
   .site-nav-item {
-    contain: layout style;
+    contain: strict;
+  }
+  
+  /* Additional mobile containment for Style & Layout reduction */
+  .home-section,
+  .promo-mosaic,
+  .promo-block {
+    contain: strict;
+    content-visibility: auto;
+  }
+  
+  /* Optimize mobile collections and lists */
+  .collection-list,
+  .collection-item,
+  .featured-collection {
+    contain: strict;
+    content-visibility: auto;
   }
   
   /* Mobile form optimization */
@@ -389,10 +412,18 @@ button {
     contain: strict;
   }
   
-  /* Optimize mobile animations - reduce to essentials */
+  /* Optimize mobile animations - EXTREME for Rendering reduction */
   * {
-    animation-duration: 0.2s !important;
-    transition-duration: 0.2s !important;
+    animation-duration: 0.1s !important;
+    transition-duration: 0.1s !important;
+  }
+  
+  /* Disable complex animations on mobile */
+  @media (prefers-reduced-motion: no-preference) {
+    * {
+      animation-timing-function: linear !important;
+      transition-timing-function: linear !important;
+    }
   }
   
   /* Mobile badge optimization */

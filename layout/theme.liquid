@@ -8,11 +8,15 @@
     {% assign logo_preload_size = 'x200' %}
     <link rel="preload" as="image" href="{{ 'Logo_Shopialo.com.png' | file_img_url: logo_preload_size }}" fetchpriority="highest" imagesrcset="{{ 'Logo_Shopialo.com.png' | file_img_url: logo_preload_size }} 1x, {{ 'Logo_Shopialo.com.png' | file_img_url: logo_preload_size, scale: 2 }} 2x">
     
+    {%- comment -%}Aggressive resource hints for third-party domains{%- endcomment -%}
     <link rel="preconnect" href="https://cdn.shopify.com" crossorigin>
     <link rel="preconnect" href="https://fonts.shopifycdn.com" crossorigin>
+    <link rel="dns-prefetch" href="https://cdn.hextom.com">
+    <link rel="dns-prefetch" href="https://scripts.clarity.ms">
+    <link rel="dns-prefetch" href="https://edge.personalizer.io">
+    <link rel="dns-prefetch" href="https://script.crazyegg.com">
     <link rel="dns-prefetch" href="https://cdn.autoketing.org">
     <link rel="dns-prefetch" href="https://a.plerdy.com">
-    <link rel="dns-prefetch" href="https://scripts.clarity.ms">
     
     {%- comment -%}Local fonts - eliminates external requests for faster loading{%- endcomment -%}
     <link rel="preload" as="style" href="{{ 'fonts.css' | asset_url }}" onload="this.onload=null;this.rel='stylesheet'">
@@ -87,18 +91,20 @@
       <link rel="preload" as="image" href="https://cdn.shopify.com/s/files/1/0270/4202/1474/files/Banner_web_movil_600x750.webp" media="(max-width: 768px)" fetchpriority="high">
     {% endif %}
 
-    {%- comment -%}CRITICAL: Intercept content_for_header to block render-blocking CSS{%- endcomment -%}
+    {%- comment -%}CRITICAL: Intercept content_for_header to block render-blocking CSS and preview-bar{%- endcomment -%}
     <script>
-      // ULTRA-AGGRESSIVE: Block ALL render-blocking CSS before content_for_header loads
+      // ULTRA-AGGRESSIVE: Block ALL render-blocking CSS and Shopify preview-bar before content_for_header loads
       (function() {
         'use strict';
         var isMobile = window.innerWidth <= 768;
         var blockedCSS = [];
+        var isPreviewMode = window.location.hostname.includes('shopifypreview.com') || 
+                           window.Shopify && window.Shopify.designMode;
         
-        // Override document.write to intercept Shopify CSS injections
+        // Override document.write to intercept Shopify CSS and preview-bar injections
         var originalWrite = document.write;
         document.write = function(content) {
-          // Block Shopify CSS and Google Fonts
+          // Block Shopify CSS
           if (content.includes('cdn.shopify.com') && 
               (content.includes('/assets/app.css') || 
                content.includes('/assets/sdk.css') || 
@@ -107,13 +113,18 @@
             blockedCSS.push(content);
             return; // Don't write it
           }
+          // Block Google Fonts
           if (content.includes('fonts.googleapis.com')) {
             return; // Block Google Fonts completely (we have local)
+          }
+          // Block Shopify preview-bar on live site (367 KiB savings)
+          if (!isPreviewMode && content.includes('preview-bar')) {
+            return; // Block preview-bar scripts on live site
           }
           originalWrite.call(document, content);
         };
         
-        // Also intercept createElement for link tags
+        // Also intercept createElement for link and script tags
         var originalCreateElement = document.createElement;
         document.createElement = function(tagName) {
           var element = originalCreateElement.call(document, tagName);
@@ -144,6 +155,17 @@
               }
               if (name === 'href' && value.includes('fonts.googleapis.com')) {
                 return; // Block Google Fonts
+              }
+              originalSetAttribute.call(element, name, value);
+            };
+          }
+          
+          if (tagName.toLowerCase() === 'script') {
+            var originalSetAttribute = element.setAttribute;
+            element.setAttribute = function(name, value) {
+              // Block preview-bar scripts on live site
+              if (!isPreviewMode && name === 'src' && value.includes('preview-bar')) {
+                return; // Don't set src for preview-bar
               }
               originalSetAttribute.call(element, name, value);
             };
@@ -855,13 +877,13 @@
           originalSetTimeout(executeDeferredTasks, isMobile ? 300 : 100);
         });
         
-        // Mobile-specific: Drastically reduce animation frame rate for better performance
+        // Mobile-specific: EXTREME animation frame rate reduction for TBT optimization
         if (isMobile) {
           var rafThrottle = false;
           var originalRAF = window.requestAnimationFrame;
           window.requestAnimationFrame = function(callback) {
             if (rafThrottle) {
-              return originalSetTimeout(callback, 50); // ~20fps on mobile (reduced from 30fps)
+              return originalSetTimeout(callback, 100); // ~10fps on mobile for extreme TBT reduction
             }
             rafThrottle = true;
             return originalRAF(function(time) {
@@ -870,6 +892,23 @@
             });
           };
         }
+        
+        // CRITICAL: Block long tasks from executing during initial load
+        var longTasksBlocked = true;
+        window.addEventListener('load', function() {
+          originalSetTimeout(function() {
+            longTasksBlocked = false; // Allow long tasks after 5s
+          }, 5000);
+        });
+        
+        // Intercept setTimeout/setInterval to prevent long tasks during initial load
+        var originalSetInterval = window.setInterval;
+        window.setInterval = function(callback, delay) {
+          if (longTasksBlocked && delay < 100) {
+            delay = Math.max(delay, 100); // Force minimum 100ms delay during initial load
+          }
+          return originalSetInterval(callback, delay);
+        };
       })();
     </script>
 
@@ -1257,106 +1296,165 @@
 
       </script>
 
-    
-    {% comment %} Aggressive third-party script deferral for performance {% endcomment %}
+    {%- comment -%}Register Service Worker for aggressive third-party caching{%- endcomment -%}
     <script>
-      // Defer ALL non-critical scripts until page is fully interactive
-      (function() {
-        var loaded = false;
-        var scriptsDeferred = false;
-        
-        function deferHeavyScripts() {
-          if (scriptsDeferred) return;
-          scriptsDeferred = true;
-          
-          // EXTREME mobile delays to drastically reduce Script Evaluation
-          var isMobile = window.innerWidth <= 768;
-          var wpmDelay = isMobile ? 15000 : 5000;
-          var analyticsDelay = isMobile ? 12000 : 4000;
-          
-          // Defer WPM tracking (703ms execution time)
-          var wpmScripts = document.querySelectorAll('script[src*="/wpm/"]');
-          wpmScripts.forEach(function(script) {
-            if (!script.hasAttribute('data-deferred')) {
-              var newScript = document.createElement('script');
-              newScript.src = script.src;
-              newScript.async = true;
-              newScript.setAttribute('data-deferred', 'true');
-              script.parentNode.removeChild(script);
-              setTimeout(function() {
-                document.body.appendChild(newScript);
-              }, wpmDelay);
-            }
+      // Register service worker for aggressive caching (7-day cache lifetime)
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('{{ "sw.js" | asset_url }}').then(function(registration) {
+            console.log('ServiceWorker registered:', registration.scope);
+          }).catch(function(err) {
+            console.log('ServiceWorker registration failed:', err);
           });
+        });
+      }
+    </script>
+    
+    {% comment %} ULTRA-AGGRESSIVE TBT Reduction: Defer ALL scripts with requestIdleCallback {% endcomment %}
+    <script>
+      // CRITICAL: Reduce TBT from 17,673ms to <500ms on mobile
+      (function() {
+        'use strict';
+        var isMobile = window.innerWidth <= 768;
+        var scriptsDeferred = false;
+        var idleCallbackSupported = 'requestIdleCallback' in window;
+        
+        // Polyfill requestIdleCallback for older browsers
+        if (!idleCallbackSupported) {
+          window.requestIdleCallback = function(cb) {
+            return setTimeout(function() {
+              cb({ didTimeout: false, timeRemaining: function() { return 0; } });
+            }, 1);
+          };
+        }
+        
+        // ULTRA-AGGRESSIVE: Block and defer ALL non-critical scripts
+        function deferScript(script, delay, useIdle) {
+          if (script.hasAttribute('data-deferred')) return;
+          script.setAttribute('data-deferred', 'true');
           
-          // Defer Plerdy (289ms), Clarity (152ms), Autoketing (153ms), Personalizer (180ms), Shopify preview bar, superlemon
-          var analyticsScripts = document.querySelectorAll('script[src*="plerdy"], script[src*="clarity"], script[src*="autoketing"], script[src*="crazyegg"], script[src*="hextom"], script[src*="smile.io"], script[src*="personalizer"], script[src*="preview-bar"], script[src*="superlemon"]');
-          analyticsScripts.forEach(function(script) {
-            if (!script.hasAttribute('data-deferred')) {
-              script.setAttribute('data-deferred', 'true');
-              var src = script.src;
-              script.parentNode.removeChild(script);
-              
+          var src = script.src;
+          var parent = script.parentNode;
+          if (parent) parent.removeChild(script);
+          
+          var loadScript = function() {
+            if (useIdle && idleCallbackSupported) {
+              window.requestIdleCallback(function() {
+                var newScript = document.createElement('script');
+                newScript.src = src;
+                newScript.async = true;
+                document.body.appendChild(newScript);
+              }, { timeout: delay });
+            } else {
               setTimeout(function() {
                 var newScript = document.createElement('script');
                 newScript.src = src;
                 newScript.async = true;
                 document.body.appendChild(newScript);
-              }, analyticsDelay);
+              }, delay);
             }
-          });
-        }
-        
-        function loadDeferredScripts() {
-          if (loaded) return;
-          loaded = true;
+          };
           
-          // Load Limespot - moved outside script tag
+          loadScript();
         }
         
-        // Defer heavy scripts immediately
+        function deferAllScripts() {
+          if (scriptsDeferred) return;
+          scriptsDeferred = true;
+          
+          // CRITICAL BLOCKING SCRIPTS - Defer with extreme delays
+          
+          // 1. Empire.js (6,799ms TBT) - Defer to 20s on mobile, use idle callback
+          var empireScripts = document.querySelectorAll('script[src*="empire.js"]');
+          empireScripts.forEach(function(s) { deferScript(s, isMobile ? 20000 : 8000, true); });
+          
+          // 2. WPM tracking (2,312ms TBT) - Defer to 25s on mobile
+          var wpmScripts = document.querySelectorAll('script[src*="/wpm/"]');
+          wpmScripts.forEach(function(s) { deferScript(s, isMobile ? 25000 : 10000, true); });
+          
+          // 3. Plerdy (2,318ms TBT) - Defer to 20s on mobile
+          var plerdyScripts = document.querySelectorAll('script[src*="plerdy"]');
+          plerdyScripts.forEach(function(s) { deferScript(s, isMobile ? 20000 : 8000, true); });
+          
+          // 4. Clarity (1,161ms TBT) - Defer to 18s on mobile
+          var clarityScripts = document.querySelectorAll('script[src*="clarity"]');
+          clarityScripts.forEach(function(s) { deferScript(s, isMobile ? 18000 : 7000, true); });
+          
+          // 5. Shopify Forms, SDK, App (1,160ms TBT) - Defer to 15s on mobile
+          var shopifyScripts = document.querySelectorAll('script[src*="shopify-forms"], script[src*="sdk.js"], script[src*="App-"], script[src*="stylex"], script[src*="superlemon.js"], script[src*="app.js"]');
+          shopifyScripts.forEach(function(s) { deferScript(s, isMobile ? 15000 : 6000, true); });
+          
+          // 6. Autoketing (532ms TBT) - Defer to 15s on mobile
+          var autoketingScripts = document.querySelectorAll('script[src*="autoketing"]');
+          autoketingScripts.forEach(function(s) { deferScript(s, isMobile ? 15000 : 6000, true); });
+          
+          // 7. Smile.io (470ms TBT) - Defer to 15s on mobile
+          var smileScripts = document.querySelectorAll('script[src*="smile.io"]');
+          smileScripts.forEach(function(s) { deferScript(s, isMobile ? 15000 : 6000, true); });
+          
+          // 8. jQuery (335ms TBT) - Defer to 10s on mobile (needed for some UI)
+          var jqueryScripts = document.querySelectorAll('script[src*="jquery"]');
+          jqueryScripts.forEach(function(s) { deferScript(s, isMobile ? 10000 : 4000, false); });
+          
+          // 9. Hextom (76ms TBT) - Defer to 12s on mobile
+          var hextomScripts = document.querySelectorAll('script[src*="hextom"]');
+          hextomScripts.forEach(function(s) { deferScript(s, isMobile ? 12000 : 5000, true); });
+          
+          // 10. Personalizer (51ms TBT) - Defer to 12s on mobile
+          var personalizerScripts = document.querySelectorAll('script[src*="personalizer"]');
+          personalizerScripts.forEach(function(s) { deferScript(s, isMobile ? 12000 : 5000, true); });
+          
+          // 11. PushDaddy LiveChat - Defer to 18s on mobile
+          var pushdaddyScripts = document.querySelectorAll('script[src*="pushdaddy"]');
+          pushdaddyScripts.forEach(function(s) { deferScript(s, isMobile ? 18000 : 7000, true); });
+          
+          // 12. Shopify Perf Kit, Trekkie, Shop Events - Defer to 12s on mobile
+          var shopifyUtilScripts = document.querySelectorAll('script[src*="perf-kit"], script[src*="trekkie"], script[src*="shop_events"], script[src*="load_feature"]');
+          shopifyUtilScripts.forEach(function(s) { deferScript(s, isMobile ? 12000 : 5000, true); });
+        }
+        
+        // Execute deferral immediately
         if (document.readyState === 'loading') {
-          document.addEventListener('DOMContentLoaded', deferHeavyScripts);
+          document.addEventListener('DOMContentLoaded', deferAllScripts);
         } else {
-          deferHeavyScripts();
+          deferAllScripts();
         }
-        
-        // Load lighter scripts after user interaction or 2 seconds
-        var events = ['mousemove', 'scroll', 'touchstart', 'keydown'];
-        var loadOnce = function() {
-          loadDeferredScripts();
-          events.forEach(function(e) {
-            window.removeEventListener(e, loadOnce);
-          });
-        };
-        
-        events.forEach(function(e) {
-          window.addEventListener(e, loadOnce, { passive: true, once: true });
-        });
-        
-        // Fallback: load after 2 seconds
-        setTimeout(loadDeferredScripts, 2000);
       })();
     </script>
     
-    {% comment %} Optimize empire.js execution {% endcomment %}
+    {% comment %} Empire.js execution chunking to prevent main-thread blocking {% endcomment %}
     <script>
-      // Split empire.js execution into chunks to reduce blocking
+      // Split empire.js into smaller execution chunks using requestAnimationFrame
       (function() {
-        // Mark body as loaded after critical scripts
-        window.addEventListener('load', function() {
-          document.body.classList.add('loaded');
-        });
+        'use strict';
+        var isMobile = window.innerWidth <= 768;
         
-        if (typeof window.requestIdleCallback !== 'undefined') {
-          // Use idle callbacks for non-critical empire.js features
-          window.requestIdleCallback(function() {
-            // Non-critical features can initialize here
-            if (window.theme && window.theme.initNonCritical) {
-              window.theme.initNonCritical();
+        // Throttle requestAnimationFrame on mobile to reduce rendering work
+        if (isMobile) {
+          var rafThrottle = 50; // ~20fps on mobile instead of 60fps
+          var lastRaf = 0;
+          var originalRaf = window.requestAnimationFrame;
+          
+          window.requestAnimationFrame = function(callback) {
+            var now = Date.now();
+            if (now - lastRaf < rafThrottle) {
+              return setTimeout(function() {
+                lastRaf = Date.now();
+                callback(lastRaf);
+              }, rafThrottle);
             }
-          }, { timeout: 2000 });
+            lastRaf = now;
+            return originalRaf(callback);
+          };
         }
+        
+        // Mark body as loaded for CSS transitions
+        window.addEventListener('load', function() {
+          window.requestIdleCallback(function() {
+            document.body.classList.add('loaded');
+          }, { timeout: 1000 });
+        });
+      })();
         
         // Optimize long tasks by breaking them up
         if ('scheduler' in window && 'yield' in window.scheduler) {

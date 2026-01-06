@@ -97,55 +97,102 @@
     logProgress('Batch 2 loaded:', batch2Items.join(', '));
   }
   
-  /* OPTIMIZATION: Batch 3 - Product gallery images and thumbnails */
+  /* OPTIMIZATION: Batch 3 - Initialize Intersection Observers for images */
   function loadBatch3() {
     if (batchesLoaded.batch3) return;
     batchesLoaded.batch3 = true;
     
     const batch3Items = [];
     
-    // Load product gallery thumbnails
-    const thumbnails = document.querySelectorAll('#thumbSwiper img[loading="lazy"]');
-    thumbnails.forEach((img, index) => {
-      img.loading = 'eager';
-      if (index === 0) batch3Items.push(`Images: ${thumbnails.length} thumbnails`);
+    // Setup Intersection Observer for product gallery images
+    const imageObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const img = entry.target;
+          const dataSrc = img.getAttribute('data-src');
+          const dataSrcset = img.getAttribute('data-srcset');
+          
+          if (dataSrc) {
+            img.setAttribute('src', dataSrc);
+            img.removeAttribute('data-src');
+          }
+          
+          if (dataSrcset) {
+            img.setAttribute('srcset', dataSrcset);
+            img.removeAttribute('data-srcset');
+          }
+          
+          img.loading = 'eager';
+          img.classList.remove('deferred-image');
+          imageObserver.unobserve(img);
+        }
+      });
+    }, {
+      rootMargin: '50px',
+      threshold: 0.01
     });
     
-    // Load main gallery images (except first which is already eager)
-    const mainImages = document.querySelectorAll('#mainSwiper img[loading="lazy"]');
-    mainImages.forEach((img, index) => {
-      img.loading = 'eager';
-      if (index === 0) batch3Items.push(`Images: ${mainImages.length} main images`);
-    });
+    // Observe all deferred product images
+    const deferredImages = document.querySelectorAll('.deferred-image');
+    deferredImages.forEach(img => imageObserver.observe(img));
     
-    // Initialize Swiper if loaded
+    if (deferredImages.length > 0) {
+      batch3Items.push(`Observer: ${deferredImages.length} product images`);
+    }
+    
+    // Initialize Swiper immediately (will work with placeholders)
     if (window.Swiper && typeof window.initProductSwiper === 'function') {
-      window.initProductSwiper(document);
-      batch3Items.push('Function: initSwiper');
+      setTimeout(() => {
+        window.initProductSwiper(document);
+        batch3Items.push('Function: initSwiper');
+      }, 100);
     }
     
     logProgress('Batch 3 loaded:', batch3Items.join(', '));
   }
   
-  /* OPTIMIZATION: Batch 4 - Product recommendations lazy loading */
+  /* OPTIMIZATION: Batch 4 - Product recommendations with Intersection Observer */
   function loadBatch4() {
     if (batchesLoaded.batch4) return;
     batchesLoaded.batch4 = true;
     
     const batch4Items = [];
     
-    // Load product recommendations images with lazy loading
+    // Setup Intersection Observer for recommendations section
     const recommendationsSection = document.querySelector('[data-product-recommendations]');
     if (recommendationsSection) {
-      // Load recommendation images
-      const recImages = recommendationsSection.querySelectorAll('img[loading="lazy"]');
-      recImages.forEach(img => {
-        img.loading = 'eager';
+      const recObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            const recImages = recommendationsSection.querySelectorAll('img');
+            recImages.forEach(img => {
+              const dataSrc = img.getAttribute('data-src');
+              const dataSrcset = img.getAttribute('data-srcset');
+              
+              if (dataSrc) {
+                img.setAttribute('src', dataSrc);
+                img.removeAttribute('data-src');
+              }
+              
+              if (dataSrcset) {
+                img.setAttribute('srcset', dataSrcset);
+                img.removeAttribute('data-srcset');
+              }
+              
+              img.loading = 'eager';
+            });
+            
+            recObserver.unobserve(recommendationsSection);
+            logProgress('Recommendations images loaded on scroll');
+          }
+        });
+      }, {
+        rootMargin: '100px',
+        threshold: 0.01
       });
       
-      if (recImages.length > 0) {
-        batch4Items.push(`Recommendations: ${recImages.length} products`);
-      }
+      recObserver.observe(recommendationsSection);
+      batch4Items.push(`Observer: recommendations section`);
     }
     
     logProgress('Batch 4 loaded:', batch4Items.join(', '));
@@ -408,11 +455,13 @@
     }, CONFIG.intervalDelay);
   }
   
-  /* OPTIMIZATION: Initialize on window load */
+  /* OPTIMIZATION: Initialize 3 seconds after window load completes */
   if (CONFIG.isProductPage) {
     window.addEventListener('load', function() {
-      // Small delay to ensure page is fully loaded
-      setTimeout(startProgressiveLoading, 100);
+      // Wait 3 seconds after page fully loads before starting batch loading
+      setTimeout(function() {
+        startProgressiveLoading();
+      }, 3000);
     });
   }
   
